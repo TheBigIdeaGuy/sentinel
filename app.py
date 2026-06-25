@@ -131,11 +131,30 @@ st.markdown("""
 [data-testid="stSidebar"] { background:#ffffff; }
 .sidebar-menu-header {
     background:#455a64; color:white; text-align:center; font-weight:bold;
-    font-size:16px; padding:10px 8px; border-radius:4px 4px 0 0; margin-bottom:10px;
+    font-size:14px; padding:8px; border-radius:4px; margin-bottom:10px;
 }
-.sidebar-section-label { font-size:10px; color:#6c757d; padding:8px; margin-top:15px; }
+.sidebar-section-label { font-size:10px; color:#6c757d; padding:4px 0; margin-top:8px; }
 .sidebar-hint { font-size:10px; color:#6c757d; text-align:center;
-                background:#f8f9fa; border-radius:4px; padding:8px; margin-top:15px; }
+                background:#f8f9fa; border-radius:4px; padding:6px; margin-top:8px; }
+
+/* ── Top filter bar ── */
+.filter-bar {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 10px 16px 8px 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    border: 1px solid #e9ecef;
+}
+/* Compact widget labels inside the filter bar */
+div[data-testid="stHorizontalBlock"] label {
+    font-size: 10px !important;
+    color: #868e96 !important;
+    text-transform: uppercase !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px !important;
+    margin-bottom: 1px !important;
+}
 
 .footer { font-family:'Ubuntu',sans-serif; font-size:10px; color:#555;
           text-align:center; padding:20px; margin-top:30px;
@@ -1017,7 +1036,7 @@ df_3 = st.session_state.df_processed
 all_locations = st.session_state.all_locations
 min_date, max_date = st.session_state.min_date, st.session_state.max_date
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# ── Sidebar: navigation only ─────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div class="sidebar-menu-header">DASHBOARD MENU</div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-section-label">Options:</div>', unsafe_allow_html=True)
@@ -1035,29 +1054,62 @@ with st.sidebar:
             st.session_state[k] = None if k=="df_processed" else ([] if k=="all_locations" else None)
         st.session_state.active_view="system"; st.rerun()
 
-    st.divider()
-    st.subheader("Filters")
-    date_from = st.date_input("From Date", value=min_date, min_value=min_date, max_value=max_date)
-    date_to   = st.date_input("To Date",   value=max_date, min_value=min_date, max_value=max_date)
-    top_n     = st.selectbox("Display Limit", [10,20,50], index=0)
-
-    selected_location = None
-    test_days = 7
-    if st.session_state.active_view in ("node","predictive"):
-        st.divider()
-        srch = st.text_input("Search Node", placeholder="Filter nodes…")
-        flocs = [l for l in all_locations if srch.lower() in l.lower()] if srch else all_locations
-        selected_location = st.selectbox("Select Node", options=flocs)
-
-    if st.session_state.active_view=="predictive":
-        st.divider()
-        test_days = st.number_input("Target TTF (Days)", min_value=1, max_value=3650, value=7, step=1)
-        st.button("▶  Simulate", use_container_width=True)
-
-    st.markdown('<div class="sidebar-hint">Filters update content automatically</div>',
+    st.markdown('<div class="sidebar-hint">Filters update charts automatically</div>',
                 unsafe_allow_html=True)
 
-# ── Filter ─────────────────────────────────────────────────────────────────────
+# ── Inline filter bar — always visible, no scrolling needed ──────────────────
+st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
+
+_view = st.session_state.active_view
+_is_node = _view in ("node","predictive")
+_is_pred = _view == "predictive"
+
+# Number of columns depends on active view
+if _is_pred:
+    _cols = st.columns([1.4, 1.4, 0.9, 2.2, 0.85, 1])
+elif _is_node:
+    _cols = st.columns([1.4, 1.4, 0.9, 2.2, 1])
+else:
+    _cols = st.columns([1.6, 1.6, 1.2, 1])
+
+with _cols[0]:
+    date_from = st.date_input("From Date", value=min_date,
+                               min_value=min_date, max_value=max_date,
+                               label_visibility="visible")
+with _cols[1]:
+    date_to = st.date_input("To Date", value=max_date,
+                             min_value=min_date, max_value=max_date,
+                             label_visibility="visible")
+with _cols[2]:
+    top_n = st.selectbox("Limit", [10,20,50], index=0, label_visibility="visible")
+
+selected_location = None
+test_days = 7
+
+if _is_node:
+    with _cols[3]:
+        srch = st.text_input("Search / Select Node", placeholder="Type to filter…",
+                             label_visibility="visible")
+        flocs = [l for l in all_locations if srch.lower() in l.lower()] if srch else all_locations
+    with _cols[4]:
+        # push selectbox to bottom-align with text input
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        selected_location = st.selectbox("Node", options=flocs, label_visibility="collapsed")
+
+if _is_pred:
+    with _cols[5]:
+        test_days = st.number_input("Target TTF (days)", min_value=1, max_value=3650,
+                                    value=7, step=1, label_visibility="visible")
+
+if not _is_node:
+    # fill remaining col with a hint
+    with _cols[3]:
+        st.markdown("<div style='font-size:10px;color:#adb5bd;padding-top:22px'>"
+                    "All charts update on filter change</div>", unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Apply date filter ──────────────────────────────────────────────────────────
 mask = ((df_3["Basic_Start_Date"].dt.date>=date_from) &
         (df_3["Basic_Start_Date"].dt.date<=date_to))
 filtered_df = df_3[mask]
